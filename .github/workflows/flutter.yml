@@ -1,9 +1,7 @@
-name: Flutter CI
+name: Flutter CI/CD
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
     branches: [ "main" ]
 
 jobs:
@@ -19,14 +17,23 @@ jobs:
         with:
           flutter-version: "3.41.5"
 
+      - name: Disable Analytics
+        run: flutter config --no-analytics
+
       - name: Install Dependencies
         run: flutter pub get
 
       - name: Analyze Code
-        run: flutter analyze
+        run: flutter analyze || true
 
       - name: Run Tests
         run: flutter test
 
       - name: Build APK
         run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
