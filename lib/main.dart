@@ -1,38 +1,34 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
+const String baseUrl = "http://172.20.10.10:8000/api/";
 
 void main() {
-  runApp(const BurhanBagsApp());
+  runApp(const MyApp());
 }
 
-class BurhanBagsApp extends StatelessWidget {
-  const BurhanBagsApp({super.key});
+void showAppMessage(BuildContext context, String message) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+  );
+}
+
+// ================= MAIN APP =================
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Burhan Bags',
+    return const MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        scaffoldBackgroundColor: Colors.grey[100],
-        appBarTheme: const AppBarTheme(
-          elevation: 0,
-          backgroundColor: Colors.blue,
-        ),
-        cardTheme: CardThemeData(
-          elevation: 3,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
-          ),
-        ),
-      ),
-      home: const HomePage(),
+      home: HomePage(),
     );
   }
 }
 
+// ================= HOME =================
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -41,643 +37,436 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  List<Map<String, dynamic>> products = [];
-  Map<String, double> dailyProfits = {};
-  double todayProfit = 0;
+  int selectedIndex = 0;
 
-  String getTodayDate() {
-    final now = DateTime.now();
-    return "${now.year}-${now.month}-${now.day}";
+  final List<Widget> pages = [
+    const ProductPage(),
+    const ProfitPage(),
+    const ManagePage(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Burhan Bags")),
+
+      drawer: Drawer(
+        child: ListView(
+          children: [
+            const DrawerHeader(
+              decoration: BoxDecoration(color: Colors.blue),
+              child: Text("Menu", style: TextStyle(color: Colors.white, fontSize: 24)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.inventory),
+              title: const Text("Products"),
+              selected: selectedIndex == 0,
+              onTap: () {
+                setState(() => selectedIndex = 0);
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.monetization_on),
+              title: const Text("Profit"),
+              selected: selectedIndex == 1,
+              onTap: () {
+                setState(() => selectedIndex = 1);
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings),
+              title: const Text("Manage Products"),
+              selected: selectedIndex == 2,
+              onTap: () {
+                setState(() => selectedIndex = 2);
+                Navigator.pop(context);
+              },
+            ),
+          ],
+        ),
+      ),
+
+      body: pages[selectedIndex],
+    );
   }
+}
+
+// ================= PRODUCTS =================
+class ProductPage extends StatefulWidget {
+  const ProductPage({super.key});
+
+  @override
+  State<ProductPage> createState() => _ProductPageState();
+}
+
+class _ProductPageState extends State<ProductPage> {
+  List products = [];
 
   @override
   void initState() {
     super.initState();
-    loadProducts();
-    loadProfits();
-    loadExpenses();
+    fetchProducts();
   }
 
-  Map<String, double> dailyExpenses = {};
-  double todayExpenses = 0;
+  Future<void> fetchProducts() async {
+    try {
+      final res = await http
+          .get(Uri.parse("${baseUrl}products/"))
+          .timeout(const Duration(seconds: 10));
 
-  // ================= STORAGE =================
-
-  Future<void> saveProducts() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('products', jsonEncode(products));
-  }
-
-  Future<void> loadProducts() async {
-    final prefs = await SharedPreferences.getInstance();
-    String? data = prefs.getString('products');
-
-    if (data != null) {
-      products = List<Map<String, dynamic>>.from(jsonDecode(data));
-      setState(() {});
+      if (res.statusCode == 200) {
+        setState(() => products = jsonDecode(res.body));
+      } else {
+        showAppMessage(context, 'Fetch failed: ${res.statusCode}');
+      }
+    } catch (e) {
+      showAppMessage(context, 'Server error. Check backend.');
     }
   }
 
-  Future<void> saveProfits() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('profits', jsonEncode(dailyProfits));
-  }
-
-  Future<void> loadProfits() async {
-    final prefs = await SharedPreferences.getInstance();
-    String? data = prefs.getString('profits');
-
-    if (data != null) {
-      dailyProfits = Map<String, double>.from(
-        jsonDecode(data).map((k, v) => MapEntry(k, (v as num).toDouble())),
+  Future<void> addProduct(Map data) async {
+    try {
+      final res = await http.post(
+        Uri.parse("${baseUrl}products/"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(data),
       );
-    }
 
-    todayProfit = dailyProfits[getTodayDate()] ?? 0;
-    setState(() {});
-  }
- 
-  Future<void> saveExpenses() async {
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.setString('expenses', jsonEncode(dailyExpenses));
-}
-
-Future<void> loadExpenses() async {
-  final prefs = await SharedPreferences.getInstance();
-  String? data = prefs.getString('expenses');
-
-  if (data != null) {
-    dailyExpenses = Map<String, double>.from(
-      jsonDecode(data).map((k, v) => MapEntry(k, (v as num).toDouble())),
-    );
-  }
-
-  todayExpenses = dailyExpenses[getTodayDate()] ?? 0;
-  setState(() {});
-}
-  // ================= CRUD =================
-
-  void addProduct(Map<String, dynamic> product) {
-    products.add(product);
-    saveProducts();
-    setState(() {});
-  }
-
-  void editProduct(int index, Map<String, dynamic> updated) {
-    products[index] = updated;
-    saveProducts();
-    setState(() {});
-  }
-
-  void deleteProduct(int index) {
-    products.removeAt(index);
-    saveProducts();
-    setState(() {});
-  }
-
-  // ================= SELL =================
-
-  void sellProduct(int index, int qty) {
-    var product = products[index];
-
-    if (product['stock'] >= qty) {
-      double cost = product['costPrice'];
-      double sell = product['sellPrice'];
-
-      double profit = (sell - cost) * qty;
-
-      product['stock'] -= qty;
-
-      String today = getTodayDate();
-      dailyProfits[today] = (dailyProfits[today] ?? 0) + profit;
-      todayProfit = dailyProfits[today]!;
-
-      saveProducts();
-      saveProfits();
-
-      setState(() {});
+      if (res.statusCode == 201) {
+        showAppMessage(context, 'Product added');
+        fetchProducts();
+      } else {
+        showAppMessage(context, 'Add failed');
+      }
+    } catch (e) {
+      showAppMessage(context, 'Error adding product');
     }
   }
 
-  void showSellDialog(int index) {
+  Future<void> sellProduct(int id, int qty) async {
+    try {
+      final res = await http.post(
+        Uri.parse("${baseUrl}sales/"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"product": id, "quantity": qty}),
+      );
+
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        showAppMessage(context, 'Sale recorded');
+        fetchProducts();
+      } else {
+        showAppMessage(context, 'Sell failed');
+      }
+    } catch (e) {
+      showAppMessage(context, 'Sell error');
+    }
+  }
+
+  void showSellDialog(int id) {
     final controller = TextEditingController();
 
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: Text("Sell ${products[index]['name']}"),
+        title: const Text("Sell Product"),
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.number,
           decoration: const InputDecoration(labelText: "Quantity"),
         ),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel")),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
           ElevatedButton(
             onPressed: () {
               int qty = int.tryParse(controller.text) ?? 0;
-
-              if (qty <= 0) return;
-
-              if (qty > products[index]['stock']) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Not enough stock")),
-                );
-                return;
+              if (qty > 0) {
+                sellProduct(id, qty);
+                Navigator.pop(context);
               }
-
-              sellProduct(index, qty);
-              Navigator.pop(context);
             },
             child: const Text("Sell"),
-          )
+          ),
         ],
       ),
     );
   }
-
-  void addExpense(double amount) {
-    String today = getTodayDate();
-
-    dailyExpenses[today] = (dailyExpenses[today] ?? 0) + amount;
-    todayExpenses = dailyExpenses[today]!;
-
-    saveExpenses();
-    setState(() {});
-  }
-
-  Map<String, double> getWeeklyProfits() {
-  Map<String, double> weekly = {};
-  DateTime now = DateTime.now();
-
-  for (int i = 0; i < 7; i++) {
-    DateTime day = now.subtract(Duration(days: i));
-    String key = "${day.year}-${day.month}-${day.day}";
-    weekly[key] = dailyProfits[key] ?? 0;
-  }
-
-  return weekly;
-}
-
-  // ================= UI =================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Burhan Bags"),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Center(
-              child: Text(
-                "UGX ${todayProfit.toStringAsFixed(0)}",
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-          )
-        ],
-      ),
-  // added the expense function 
-  
-      // ===== Drawer =====
-      drawer: Drawer(
-        child: ListView(
-          children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(color: Colors.blue),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Icon(Icons.store, color: Colors.white, size: 40),
-                  SizedBox(height: 10),
-                  Text("Burhan Bags",
-                      style: TextStyle(color: Colors.white, fontSize: 20)),
-                ],
-              ),
-            ),
-
-            ListTile(
-              leading: const Icon(Icons.add),
-              title: const Text("Add Product"),
-              onTap: () async {
-                Navigator.pop(context);
-                final result = await Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const AddProductPage()),
-                );
-                if (result != null) addProduct(result);
-              },
-            ),
-
-            ListTile(
-              leading: const Icon(Icons.edit),
-              title: const Text("Edit Product"),
-              onTap: () {
-                Navigator.pop(context);
-                selectProductAction(isEdit: true);
-              },
-            ),
-
-            ListTile(
-              leading: const Icon(Icons.delete),
-              title: const Text("Delete Product"),
-              onTap: () {
-                Navigator.pop(context);
-                selectProductAction(isEdit: false);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.bar_chart),
-              title: const Text("Weekly Report"),
-              onTap: () {
-                Navigator.pop(context);
-
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => WeeklyReportPage(
-                      weeklyData: getWeeklyProfits(),
-                    ),
-                  ),
-                );
-              },
-              ),
-
-              ListTile(
-                leading: const Icon(Icons.money_off),
-                title: const Text("Daily Expenses"),
-                onTap: () {
-                  Navigator.pop(context);
-
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const ExpensesPage(),
-                    ),
-               );
-        },
-      ),
-          ],
-        ),
-      ),
-
-      // ===== Body =====
-      body: Column(
-        children: [
-          // Profit Card
-          Container(
-            margin: const EdgeInsets.all(12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.blue,
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text("Today's Profit",
-                    style: TextStyle(color: Colors.white)),
-                Text(
-                  "UGX ${todayProfit.toStringAsFixed(0)}",
-                  style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-          ),
-
-          Expanded(
-            child: products.isEmpty
-                ? const Center(child: Text("No products added"))
-                : ListView.builder(
-                    itemCount: products.length,
-                    itemBuilder: (_, index) {
-                      var p = products[index];
-
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 6),
-                        child: Card(
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.all(12),
-                            title: Text(p['name'],
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold)),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(height: 5),
-                                Text("Stock: ${p['stock']}"),
-                                Text("Buy: UGX ${p['costPrice']}"),
-                                Text("Sell: UGX ${p['sellPrice']}"),
-                              ],
-                            ),
-                            trailing: const Icon(Icons.sell,
-                                color: Colors.green),
-                            onTap: () => showSellDialog(index),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-
-      floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.add),
-        label: const Text("Add Product"),
+      floatingActionButton: FloatingActionButton(
         onPressed: () async {
           final result = await Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => const AddProductPage()),
+            MaterialPageRoute(builder: (_) => const AddPage()),
           );
           if (result != null) addProduct(result);
         },
+        child: const Icon(Icons.add),
       ),
-    );
-  }
-
-  void selectProductAction({required bool isEdit}) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: Text(isEdit ? "Edit Product" : "Delete Product"),
-        content: SizedBox(
-          width: double.maxFinite,
-          height: 300,
-          child: ListView.builder(
-            itemCount: products.length,
-            itemBuilder: (_, index) {
-              return ListTile(
-                title: Text(products[index]['name']),
-                onTap: () async {
-                  Navigator.pop(context);
-
-                  if (isEdit) {
-                    final updated = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            AddProductPage(product: products[index]),
-                      ),
-                    );
-
-                    if (updated != null) editProduct(index, updated);
-                  } else {
-                    deleteProduct(index);
-                  }
-                },
-              );
-            },
-          ),
-        ),
-      ),
+      body: products.isEmpty
+          ? const Center(child: Text("No products yet.\nTap + to add.", textAlign: TextAlign.center))
+          : ListView.builder(
+              itemCount: products.length,
+              itemBuilder: (_, i) {
+                var p = products[i];
+                return Card(
+                  child: ListTile(
+                    title: Text(p['name']),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("Stock: ${p['stock']}"),
+                        Text("Cost: ${p['cost_price']}"),
+                        Text("Sell: ${p['sell_price']}"),
+                      ],
+                    ),
+                    onTap: () => showSellDialog(p['id']),
+                  ),
+                );
+              },
+            ),
     );
   }
 }
 
-// ================= ADD PAGE =================
-
-class AddProductPage extends StatefulWidget {
-  final Map<String, dynamic>? product;
-
-  const AddProductPage({super.key, this.product});
+// ================= ADD PRODUCT =================
+class AddPage extends StatefulWidget {
+  const AddPage({super.key});
 
   @override
-  State<AddProductPage> createState() => _AddProductPageState();
+  State<AddPage> createState() => _AddPageState();
 }
 
-class _AddProductPageState extends State<AddProductPage> {
+class _AddPageState extends State<AddPage> {
   final name = TextEditingController();
   final stock = TextEditingController();
   final cost = TextEditingController();
   final price = TextEditingController();
 
   @override
-  void initState() {
-    super.initState();
-
-    if (widget.product != null) {
-      name.text = widget.product!['name'];
-      stock.text = widget.product!['stock'].toString();
-      cost.text = widget.product!['costPrice'].toString();
-      price.text = widget.product!['sellPrice'].toString();
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar:
-          AppBar(title: Text(widget.product == null ? "Add Product" : "Edit Product")),
-      body: SingleChildScrollView(
+      appBar: AppBar(title: const Text("Add Product")),
+      body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            buildField(name, "Product Name"),
-            const SizedBox(height: 10),
-            buildField(stock, "Stock", isNumber: true),
-            const SizedBox(height: 10),
-            buildField(cost, "Cost Price", isNumber: true),
-            const SizedBox(height: 10),
-            buildField(price, "Selling Price", isNumber: true),
+            field(name, "Name"),
+            field(stock, "Stock", true),
+            field(cost, "Cost Price", true),
+            field(price, "Selling Price", true),
             const SizedBox(height: 20),
-
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context, {
-                    "name": name.text,
-                    "stock": int.tryParse(stock.text) ?? 0,
-                    "costPrice": double.tryParse(cost.text) ?? 0,
-                    "sellPrice": double.tryParse(price.text) ?? 0,
-                  });
-                },
-                child: Text(widget.product == null ? "Add Product" : "Update"),
-              ),
-            )
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context, {
+                  "name": name.text,
+                  "stock": int.tryParse(stock.text) ?? 0,
+                  "cost_price": double.tryParse(cost.text) ?? 0,
+                  "sell_price": double.tryParse(price.text) ?? 0,
+                });
+              },
+              child: const Text("Save"),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget buildField(TextEditingController controller, String label,
-      {bool isNumber = false}) {
-    return TextField(
-      controller: controller,
-      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-      decoration: InputDecoration(
-        labelText: label,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+  Widget field(TextEditingController c, String label, [bool num = false]) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextField(
+        controller: c,
+        keyboardType: num ? TextInputType.number : TextInputType.text,
+        decoration: const InputDecoration(
+          border: OutlineInputBorder(),
+        ).copyWith(labelText: label),
       ),
     );
   }
 }
 
-//expense page
-class ExpensesPage extends StatefulWidget {
-  const ExpensesPage({super.key});
+// ================= PROFIT =================
+class ProfitPage extends StatefulWidget {
+  const ProfitPage({super.key});
 
   @override
-  State<ExpensesPage> createState() => _ExpensesPageState();
+  State<ProfitPage> createState() => _ProfitPageState();
 }
 
-class _ExpensesPageState extends State<ExpensesPage> {
-  Map<String, double> expenses = {};
-  double todayTotal = 0;
-
-  String getTodayDate() {
-    final now = DateTime.now();
-    return "${now.year}-${now.month}-${now.day}";
-  }
+class _ProfitPageState extends State<ProfitPage> {
+  double totalProfit = 0;
 
   @override
   void initState() {
     super.initState();
-    loadExpenses();
+    fetchProfit();
   }
 
-  Future<void> loadExpenses() async {
-    final prefs = await SharedPreferences.getInstance();
-    String? data = prefs.getString('expenses');
-
-    if (data != null) {
-      expenses = Map<String, double>.from(
-        jsonDecode(data).map((k, v) => MapEntry(k, (v as num).toDouble())),
-      );
+  Future<void> fetchProfit() async {
+    try {
+      final res = await http.get(Uri.parse("${baseUrl}profit/"));
+      if (res.statusCode == 200) {
+        setState(() => totalProfit = (jsonDecode(res.body)['total_profit'] ?? 0) * 1.0);
+      }
+    } catch (e) {
+      showAppMessage(context, "Error loading profit");
     }
-
-    todayTotal = expenses[getTodayDate()] ?? 0;
-    setState(() {});
   }
 
-  Future<void> saveExpenses() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('expenses', jsonEncode(expenses));
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      onRefresh: fetchProfit,
+      child: ListView(
+        children: [
+          const SizedBox(height: 200),
+          Center(
+            child: Text(
+              "Total Profit: \$${totalProfit.toStringAsFixed(2)}",
+              style: const TextStyle(fontSize: 24),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ================= MANAGE =================
+class ManagePage extends StatefulWidget {
+  const ManagePage({super.key});
+
+  @override
+  State<ManagePage> createState() => _ManagePageState();
+}
+
+class _ManagePageState extends State<ManagePage> {
+  List products = [];
+
+  @override
+  void initState() {
+    super.initState();
+    fetchProducts();
   }
 
-  void addExpense(double amount) {
-    String today = getTodayDate();
-
-    expenses[today] = (expenses[today] ?? 0) + amount;
-    todayTotal = expenses[today]!;
-
-    saveExpenses();
-    setState(() {});
+  Future<void> fetchProducts() async {
+    try {
+      final res = await http.get(Uri.parse("${baseUrl}products/"));
+      if (res.statusCode == 200) {
+        setState(() => products = jsonDecode(res.body));
+      }
+    } catch (e) {
+      showAppMessage(context, "Error loading products");
+    }
   }
 
-  void showAddDialog() {
-    final controller = TextEditingController();
+  Future<void> deleteProduct(int id) async {
+    try {
+      final res = await http.delete(Uri.parse("${baseUrl}products/$id/"));
+      if (res.statusCode == 204) {
+        showAppMessage(context, "Deleted");
+        fetchProducts();
+      }
+    } catch (e) {
+      showAppMessage(context, "Delete failed");
+    }
+  }
+
+  Future<void> updateProduct(int id, Map data) async {
+    try {
+      final res = await http.put(
+        Uri.parse("${baseUrl}products/$id/"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(data),
+      );
+
+      if (res.statusCode == 200) {
+        showAppMessage(context, "Updated");
+        fetchProducts();
+      }
+    } catch (e) {
+      showAppMessage(context, "Update failed");
+    }
+  }
+
+  void showEditDialog(Map p) {
+    final name = TextEditingController(text: p['name']);
+    final stock = TextEditingController(text: p['stock'].toString());
+    final cost = TextEditingController(text: p['cost_price'].toString());
+    final price = TextEditingController(text: p['sell_price'].toString());
 
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text("Add Expense"),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: "Amount"),
+        title: const Text("Edit Product"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            field(name, "Name"),
+            field(stock, "Stock", true),
+            field(cost, "Cost Price", true),
+            field(price, "Selling Price", true),
+          ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
           ElevatedButton(
             onPressed: () {
-              double amount =
-                  double.tryParse(controller.text) ?? 0;
-
-              if (amount <= 0) return;
-
-              addExpense(amount);
+              updateProduct(p['id'], {
+                "name": name.text,
+                "stock": int.tryParse(stock.text) ?? 0,
+                "cost_price": double.tryParse(cost.text) ?? 0,
+                "sell_price": double.tryParse(price.text) ?? 0,
+              });
               Navigator.pop(context);
             },
-            child: const Text("Add"),
+            child: const Text("Update"),
           ),
         ],
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Daily Expenses")),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Card(
-              child: ListTile(
-                title: const Text("Today's Expenses"),
-                trailing: Text(
-                  "UGX ${todayTotal.toStringAsFixed(0)}",
-                  style: const TextStyle(
-                      color: Colors.red,
-                      fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 10),
-
-            Expanded(
-              child: ListView(
-                children: expenses.entries.map((entry) {
-                  return Card(
-                    child: ListTile(
-                      title: Text(entry.key),
-                      trailing: Text(
-                        "UGX ${entry.value.toStringAsFixed(0)}",
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            )
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: showAddDialog,
-        child: const Icon(Icons.add),
+  Widget field(TextEditingController c, String label, [bool num = false]) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextField(
+        controller: c,
+        keyboardType: num ? TextInputType.number : TextInputType.text,
+        decoration: const InputDecoration(border: OutlineInputBorder())
+            .copyWith(labelText: label),
       ),
     );
   }
-}
-
-class WeeklyReportPage extends StatelessWidget {
-  final Map<String, double> weeklyData;
-
-  const WeeklyReportPage({super.key, required this.weeklyData});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Weekly Report")),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: weeklyData.entries.map((entry) {
-          return Card(
-            child: ListTile(
-              title: Text(entry.key),
-              trailing: Text(
-                "UGX ${entry.value.toStringAsFixed(0)}",
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
+    return products.isEmpty
+        ? const Center(child: Text("No products available"))
+        : ListView.builder(
+            itemCount: products.length,
+            itemBuilder: (_, i) {
+              var p = products[i];
+              return Card(
+                child: ListTile(
+                  title: Text(p['name']),
+                  subtitle: Text("Stock: ${p['stock']}"),
+                  leading: IconButton(
+                    icon: const Icon(Icons.edit, color: Colors.blue),
+                    onPressed: () => showEditDialog(p),
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.red),
+                    onPressed: () => deleteProduct(p['id']),
+                  ),
+                ),
+              );
+            },
           );
-        }).toList(),
-      ),
-    );
   }
 }
