@@ -11,7 +11,7 @@ def analytics(request):
     total_products = Product.objects.count()
     total_sales = Sale.objects.aggregate(total=Sum('quantity'))['total'] or 0
     
-    total_profit = Sale.objects.aggrerate(
+    total_profit = Sale.objects.aggregate(
         profit=Sum((F('product__sell_price') - F('product__cost_price')) * F('quantity'))
     )['profit'] or 0
 
