@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import ProductViewSet, DailyProfitViewSet
-from .views import total_profit, sell_product
+from .views import total_profit, sell_product, analytics
 
 router = DefaultRouter()
 router.register(r'products', ProductViewSet)
@@ -14,5 +14,6 @@ urlpatterns = [
     #custom endpoints
     path('profit/', total_profit),
     path('sales/', sell_product),
+    path('analytics/', analytics),
 ]
 

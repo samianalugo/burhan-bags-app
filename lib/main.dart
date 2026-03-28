@@ -1,9 +1,8 @@
-import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-const String baseUrl = "http://172.20.10.10:8000/api/";
+const String baseUrl = "https://burhan-bags-app.onrender.com/api/";
 
 void main() {
   runApp(const MyApp());
@@ -11,11 +10,11 @@ void main() {
 
 void showAppMessage(BuildContext context, String message) {
   ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+    SnackBar(content: Text(message)),
   );
 }
 
-// ================= MAIN APP =================
+// ================= APP =================
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -39,7 +38,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int selectedIndex = 0;
 
-  final List<Widget> pages = [
+  final pages = [
+    const DashboardPage(),
     const ProductPage(),
     const ProfitPage(),
     const ManagePage(),
@@ -55,40 +55,30 @@ class _HomePageState extends State<HomePage> {
           children: [
             const DrawerHeader(
               decoration: BoxDecoration(color: Colors.blue),
-              child: Text("Menu", style: TextStyle(color: Colors.white, fontSize: 24)),
+              child: Text("Menu", style: TextStyle(color: Colors.white)),
             ),
-            ListTile(
-              leading: const Icon(Icons.inventory),
-              title: const Text("Products"),
-              selected: selectedIndex == 0,
-              onTap: () {
-                setState(() => selectedIndex = 0);
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.monetization_on),
-              title: const Text("Profit"),
-              selected: selectedIndex == 1,
-              onTap: () {
-                setState(() => selectedIndex = 1);
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.settings),
-              title: const Text("Manage Products"),
-              selected: selectedIndex == 2,
-              onTap: () {
-                setState(() => selectedIndex = 2);
-                Navigator.pop(context);
-              },
-            ),
+
+            drawerItem("Dashboard", Icons.dashboard, 0),
+            drawerItem("Products", Icons.inventory, 1),
+            drawerItem("Profit", Icons.attach_money, 2),
+            drawerItem("Manage", Icons.settings, 3),
           ],
         ),
       ),
 
       body: pages[selectedIndex],
+    );
+  }
+
+  Widget drawerItem(String title, IconData icon, int index) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(title),
+      selected: selectedIndex == index,
+      onTap: () {
+        setState(() => selectedIndex = index);
+        Navigator.pop(context);
+      },
     );
   }
 }
@@ -103,6 +93,7 @@ class ProductPage extends StatefulWidget {
 
 class _ProductPageState extends State<ProductPage> {
   List products = [];
+  bool isLoading = true;
 
   @override
   void initState() {
@@ -111,60 +102,48 @@ class _ProductPageState extends State<ProductPage> {
   }
 
   Future<void> fetchProducts() async {
+    setState(() => isLoading = true);
+
     try {
-      final res = await http
-          .get(Uri.parse("${baseUrl}products/"))
-          .timeout(const Duration(seconds: 10));
+      final res = await http.get(Uri.parse("${baseUrl}products/"));
 
       if (res.statusCode == 200) {
-        setState(() => products = jsonDecode(res.body));
-      } else {
-        showAppMessage(context, 'Fetch failed: ${res.statusCode}');
+        products = jsonDecode(res.body);
       }
     } catch (e) {
-      showAppMessage(context, 'Server error. Check backend.');
+      showAppMessage(context, "Server error");
     }
+
+    setState(() => isLoading = false);
   }
 
   Future<void> addProduct(Map data) async {
-    try {
-      final res = await http.post(
-        Uri.parse("${baseUrl}products/"),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode(data),
-      );
+    final res = await http.post(
+      Uri.parse("${baseUrl}products/"),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode(data),
+    );
 
-      if (res.statusCode == 201) {
-        showAppMessage(context, 'Product added');
-        fetchProducts();
-      } else {
-        showAppMessage(context, 'Add failed');
-      }
-    } catch (e) {
-      showAppMessage(context, 'Error adding product');
+    if (res.statusCode == 201) {
+      showAppMessage(context, "Added");
+      fetchProducts();
     }
   }
 
   Future<void> sellProduct(int id, int qty) async {
-    try {
-      final res = await http.post(
-        Uri.parse("${baseUrl}sales/"),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"product": id, "quantity": qty}),
-      );
+    final res = await http.post(
+      Uri.parse("${baseUrl}sales/"),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"product": id, "quantity": qty}),
+    );
 
-      if (res.statusCode == 200 || res.statusCode == 201) {
-        showAppMessage(context, 'Sale recorded');
-        fetchProducts();
-      } else {
-        showAppMessage(context, 'Sell failed');
-      }
-    } catch (e) {
-      showAppMessage(context, 'Sell error');
+    if (res.statusCode == 201 || res.statusCode == 200) {
+      showAppMessage(context, "Sale recorded");
+      fetchProducts();
     }
   }
 
-  void showSellDialog(int id) {
+  void showSellDialog(Map p) {
     final controller = TextEditingController();
 
     showDialog(
@@ -177,14 +156,25 @@ class _ProductPageState extends State<ProductPage> {
           decoration: const InputDecoration(labelText: "Quantity"),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel")),
           ElevatedButton(
             onPressed: () {
               int qty = int.tryParse(controller.text) ?? 0;
-              if (qty > 0) {
-                sellProduct(id, qty);
-                Navigator.pop(context);
+
+              if (qty <= 0) {
+                showAppMessage(context, "Enter valid quantity");
+                return;
               }
+
+              if (qty > p['stock']) {
+                showAppMessage(context, "Not enough stock");
+                return;
+              }
+
+              sellProduct(p['id'], qty);
+              Navigator.pop(context);
             },
             child: const Text("Sell"),
           ),
@@ -195,59 +185,124 @@ class _ProductPageState extends State<ProductPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (products.isEmpty) {
+      return const Center(child: Text("No products"));
+    }
+
     return Scaffold(
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          final result = await Navigator.push(
+          final data = await Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const AddPage()),
           );
-          if (result != null) addProduct(result);
+          if (data != null) addProduct(data);
         },
         child: const Icon(Icons.add),
       ),
-      body: products.isEmpty
-          ? const Center(child: Text("No products yet.\nTap + to add.", textAlign: TextAlign.center))
-          : ListView.builder(
-              itemCount: products.length,
-              itemBuilder: (_, i) {
-                var p = products[i];
-                return Card(
-                  child: ListTile(
-                    title: Text(p['name']),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("Stock: ${p['stock']}"),
-                        Text("Cost: ${p['cost_price']}"),
-                        Text("Sell: ${p['sell_price']}"),
-                      ],
+      body: ListView.builder(
+        itemCount: products.length,
+        itemBuilder: (_, i) {
+          var p = products[i];
+
+          return Card(
+            child: ListTile(
+              title: Text(p['name']),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Stock: ${p['stock']}",
+                    style: TextStyle(
+                      color: p['stock'] < 5 ? Colors.red : Colors.black,
+                      fontWeight: p['stock'] < 5
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                     ),
-                    onTap: () => showSellDialog(p['id']),
                   ),
-                );
-              },
+                  Text("Cost: ${p['cost_price']}"),
+                  Text("Sell: ${p['sell_price']}"),
+                ],
+              ),
+              onTap: () => showSellDialog(p),
             ),
+          );
+        },
+      ),
     );
   }
 }
 
-// ================= ADD PRODUCT =================
-class AddPage extends StatefulWidget {
-  const AddPage({super.key});
+// ================= DASHBOARD =================
+class DashboardPage extends StatefulWidget {
+  const DashboardPage({super.key});
 
   @override
-  State<AddPage> createState() => _AddPageState();
+  State<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _AddPageState extends State<AddPage> {
-  final name = TextEditingController();
-  final stock = TextEditingController();
-  final cost = TextEditingController();
-  final price = TextEditingController();
+class _DashboardPageState extends State<DashboardPage> {
+  Map data = {};
+
+  @override
+  void initState() {
+    super.initState();
+    fetch();
+  }
+
+  Future<void> fetch() async {
+    final res = await http.get(Uri.parse("${baseUrl}analytics/"));
+    if (res.statusCode == 200) {
+      setState(() => data = jsonDecode(res.body));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (data.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return RefreshIndicator(
+      onRefresh: fetch,
+      child: GridView.count(
+        crossAxisCount: 2,
+        children: [
+          card("Profit", data['total_profit']),
+          card("Products", data['total_products']),
+          card("Sales", data['total_sales']),
+          card("Low Stock", data['low_stock']),
+        ],
+      ),
+    );
+  }
+
+  Widget card(String title, dynamic value) {
+    return Card(
+      child: Center(
+        child: Text("$title\n$value",
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 18)),
+      ),
+    );
+  }
+}
+
+// ================= ADD =================
+class AddPage extends StatelessWidget {
+  const AddPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = TextEditingController();
+    final stock = TextEditingController();
+    final cost = TextEditingController();
+    final price = TextEditingController();
+
     return Scaffold(
       appBar: AppBar(title: const Text("Add Product")),
       body: Padding(
@@ -256,9 +311,8 @@ class _AddPageState extends State<AddPage> {
           children: [
             field(name, "Name"),
             field(stock, "Stock", true),
-            field(cost, "Cost Price", true),
-            field(price, "Selling Price", true),
-            const SizedBox(height: 20),
+            field(cost, "Cost", true),
+            field(price, "Sell", true),
             ElevatedButton(
               onPressed: () {
                 Navigator.pop(context, {
@@ -269,7 +323,7 @@ class _AddPageState extends State<AddPage> {
                 });
               },
               child: const Text("Save"),
-            ),
+            )
           ],
         ),
       ),
@@ -277,15 +331,10 @@ class _AddPageState extends State<AddPage> {
   }
 
   Widget field(TextEditingController c, String label, [bool num = false]) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: TextField(
-        controller: c,
-        keyboardType: num ? TextInputType.number : TextInputType.text,
-        decoration: const InputDecoration(
-          border: OutlineInputBorder(),
-        ).copyWith(labelText: label),
-      ),
+    return TextField(
+      controller: c,
+      keyboardType: num ? TextInputType.number : TextInputType.text,
+      decoration: InputDecoration(labelText: label),
     );
   }
 }
@@ -299,40 +348,25 @@ class ProfitPage extends StatefulWidget {
 }
 
 class _ProfitPageState extends State<ProfitPage> {
-  double totalProfit = 0;
+  double profit = 0;
 
   @override
   void initState() {
     super.initState();
-    fetchProfit();
+    fetch();
   }
 
-  Future<void> fetchProfit() async {
-    try {
-      final res = await http.get(Uri.parse("${baseUrl}profit/"));
-      if (res.statusCode == 200) {
-        setState(() => totalProfit = (jsonDecode(res.body)['total_profit'] ?? 0) * 1.0);
-      }
-    } catch (e) {
-      showAppMessage(context, "Error loading profit");
+  Future<void> fetch() async {
+    final res = await http.get(Uri.parse("${baseUrl}profit/"));
+    if (res.statusCode == 200) {
+      setState(() => profit = jsonDecode(res.body)['total_profit'] * 1.0);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      onRefresh: fetchProfit,
-      child: ListView(
-        children: [
-          const SizedBox(height: 200),
-          Center(
-            child: Text(
-              "Total Profit: \$${totalProfit.toStringAsFixed(2)}",
-              style: const TextStyle(fontSize: 24),
-            ),
-          ),
-        ],
-      ),
+    return Center(
+      child: Text("Profit: \$${profit.toStringAsFixed(2)}"),
     );
   }
 }
@@ -351,122 +385,36 @@ class _ManagePageState extends State<ManagePage> {
   @override
   void initState() {
     super.initState();
-    fetchProducts();
+    fetch();
   }
 
-  Future<void> fetchProducts() async {
-    try {
-      final res = await http.get(Uri.parse("${baseUrl}products/"));
-      if (res.statusCode == 200) {
-        setState(() => products = jsonDecode(res.body));
-      }
-    } catch (e) {
-      showAppMessage(context, "Error loading products");
+  Future<void> fetch() async {
+    final res = await http.get(Uri.parse("${baseUrl}products/"));
+    if (res.statusCode == 200) {
+      setState(() => products = jsonDecode(res.body));
     }
   }
 
-  Future<void> deleteProduct(int id) async {
-    try {
-      final res = await http.delete(Uri.parse("${baseUrl}products/$id/"));
-      if (res.statusCode == 204) {
-        showAppMessage(context, "Deleted");
-        fetchProducts();
-      }
-    } catch (e) {
-      showAppMessage(context, "Delete failed");
-    }
-  }
-
-  Future<void> updateProduct(int id, Map data) async {
-    try {
-      final res = await http.put(
-        Uri.parse("${baseUrl}products/$id/"),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode(data),
-      );
-
-      if (res.statusCode == 200) {
-        showAppMessage(context, "Updated");
-        fetchProducts();
-      }
-    } catch (e) {
-      showAppMessage(context, "Update failed");
-    }
-  }
-
-  void showEditDialog(Map p) {
-    final name = TextEditingController(text: p['name']);
-    final stock = TextEditingController(text: p['stock'].toString());
-    final cost = TextEditingController(text: p['cost_price'].toString());
-    final price = TextEditingController(text: p['sell_price'].toString());
-
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Edit Product"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            field(name, "Name"),
-            field(stock, "Stock", true),
-            field(cost, "Cost Price", true),
-            field(price, "Selling Price", true),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-          ElevatedButton(
-            onPressed: () {
-              updateProduct(p['id'], {
-                "name": name.text,
-                "stock": int.tryParse(stock.text) ?? 0,
-                "cost_price": double.tryParse(cost.text) ?? 0,
-                "sell_price": double.tryParse(price.text) ?? 0,
-              });
-              Navigator.pop(context);
-            },
-            child: const Text("Update"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget field(TextEditingController c, String label, [bool num = false]) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: TextField(
-        controller: c,
-        keyboardType: num ? TextInputType.number : TextInputType.text,
-        decoration: const InputDecoration(border: OutlineInputBorder())
-            .copyWith(labelText: label),
-      ),
-    );
+  Future<void> delete(int id) async {
+    await http.delete(Uri.parse("${baseUrl}products/$id/"));
+    fetch();
   }
 
   @override
   Widget build(BuildContext context) {
-    return products.isEmpty
-        ? const Center(child: Text("No products available"))
-        : ListView.builder(
-            itemCount: products.length,
-            itemBuilder: (_, i) {
-              var p = products[i];
-              return Card(
-                child: ListTile(
-                  title: Text(p['name']),
-                  subtitle: Text("Stock: ${p['stock']}"),
-                  leading: IconButton(
-                    icon: const Icon(Icons.edit, color: Colors.blue),
-                    onPressed: () => showEditDialog(p),
-                  ),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.red),
-                    onPressed: () => deleteProduct(p['id']),
-                  ),
-                ),
-              );
-            },
-          );
+    return ListView.builder(
+      itemCount: products.length,
+      itemBuilder: (_, i) {
+        var p = products[i];
+        return ListTile(
+          title: Text(p['name']),
+          subtitle: Text("Stock: ${p['stock']}"),
+          trailing: IconButton(
+            icon: const Icon(Icons.delete),
+            onPressed: () => delete(p['id']),
+          ),
+        );
+      },
+    );
   }
 }

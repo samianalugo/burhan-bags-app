@@ -3,8 +3,26 @@ from .models import Product, DailyProfit, Sale
 from .serializers import ProductSerializer, DailyProfitSerializer
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from django.db.models import Sum
+from django.db.models import Sum, F
 from django.utils import timezone
+
+@api_view(['GET'])
+def analytics(request):
+    total_products = Product.objects.count()
+    total_sales = Sale.objects.aggregate(total=Sum('quantity'))['total'] or 0
+    
+    total_profit = Sale.objects.aggrerate(
+        profit=Sum((F('product__sell_price') - F('product__cost_price')) * F('quantity'))
+    )['profit'] or 0
+
+    low_stock = Product.objects.filter(stock__lt=5).count()
+
+    return Response({
+        "total_products": total_products,
+        "total_sales": total_sales,
+        "total_profit": total_profit,
+        "low_stock": low_stock
+    })
 
 @api_view(['POST'])
 def sell_product(request):
