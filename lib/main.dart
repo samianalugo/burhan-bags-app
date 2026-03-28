@@ -247,6 +247,8 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   Map data = {};
+  bool isLoading = true;
+  String? error;
 
   @override
   void initState() {
@@ -254,18 +256,28 @@ class _DashboardPageState extends State<DashboardPage> {
     fetch();
   }
 
+
   Future<void> fetch() async {
-    final res = await http.get(Uri.parse("${baseUrl}analytics/"));
-    if (res.statusCode == 200) {
-      setState(() => data = jsonDecode(res.body));
+    setState(() { isLoading = true; error = null; });
+    try {
+      final res = await http.get(Uri.parse("${baseUrl}analytics/"));
+      if (res.statusCode == 200) {
+        setState(() => data = jsonDecode(res.body));
+      } else {
+        setState(() => error = "Server error ${res.statusCode}");
+      }
+    } catch (e) {
+      setState(() => error = "Network error");
+    } finally {
+      setState(() => isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (data.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    if (isLoading) return const Center(child: CircularProgressIndicator());
+    if (error != null) return Center(child: Text(error!));
+    if (data.isEmpty) return const Center(child: Text("No data"));
 
     return RefreshIndicator(
       onRefresh: fetch,
