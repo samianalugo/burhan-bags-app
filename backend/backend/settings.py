@@ -130,3 +130,9 @@ DATABASES = {
         default=os.getenv("DATABASE_URL", "sqlite:///" + str(BASE_DIR / "db.sqlite3"))
     )
 }
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://burhan-bags-app.onrender.com"
+]
+
+AUTH_USER_MODEL = 'api.User'

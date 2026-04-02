@@ -5,6 +5,51 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.db.models import Sum, F
 from django.utils import timezone
+from django.contrib.auth import authenticate
+from django.contrib.auth.hashers import make_password
+from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.models import User
+
+# ✅ REGISTER
+@csrf_exempt
+@api_view(['POST'])
+def register(request):
+    email = request.data.get("email")
+    password = request.data.get('password')
+
+    if not email or not password:
+        return Response({"error": "Email and password required"}, status=400)
+
+    if User.objects.filter(email=email).exists():
+        return Response({"error": "User already exists"}, status=400)
+    
+    user = User.objects.create(
+        username=email,
+        email=email,
+        password=make_password(password)
+    )
+
+    return Response({"message": "User created successfully"}, status=201)
+
+
+# ✅ LOGIN (NOW OUTSIDE ✅)
+@csrf_exempt
+@api_view(['POST'])
+def login(request):
+    email = request.data.get('email')
+    password = request.data.get('password')
+
+    user = authenticate(username=email, password=password)
+
+    if user:
+        return Response({
+            "message": "Login successfully",
+            "email": user.email
+        })
+
+    return Response({"error": "Invalid credentials"}, status=401)
+
+
 
 @api_view(['GET'])
 def analytics(request):
