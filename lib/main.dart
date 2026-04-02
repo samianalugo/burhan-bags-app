@@ -111,6 +111,7 @@ class _ProductPageState extends State<ProductPage> {
         products = jsonDecode(res.body);
       }
     } catch (e) {
+      if (!mounted) return;
       showAppMessage(context, "Server error");
     }
 
@@ -124,6 +125,7 @@ class _ProductPageState extends State<ProductPage> {
       body: jsonEncode(data),
     );
 
+    if (!mounted) return;
     if (res.statusCode == 201) {
       showAppMessage(context, "Added");
       fetchProducts();
@@ -137,6 +139,7 @@ class _ProductPageState extends State<ProductPage> {
       body: jsonEncode({"product": id, "quantity": qty}),
     );
 
+    if (!mounted) return;
     if (res.statusCode == 201 || res.statusCode == 200) {
       showAppMessage(context, "Sale recorded");
       fetchProducts();
