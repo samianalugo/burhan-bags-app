@@ -5,10 +5,11 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.db.models import Sum, F
 from django.utils import timezone
-from django.contrib.auth import authenticate
+from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.hashers import make_password
 from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth.models import User
+
+User = get_user_model()
 
 # ✅ REGISTER
 @csrf_exempt
@@ -16,17 +17,22 @@ from django.contrib.auth.models import User
 def register(request):
     email = request.data.get("email")
     password = request.data.get('password')
+    first_name = request.data.get('first_name', '')
+    last_name = request.data.get('last_name', '')
+    tel_number = request.data.get('tel_number', '')
 
     if not email or not password:
         return Response({"error": "Email and password required"}, status=400)
 
     if User.objects.filter(email=email).exists():
         return Response({"error": "User already exists"}, status=400)
-    
-    user = User.objects.create(
-        username=email,
+
+    User.objects.create(
         email=email,
-        password=make_password(password)
+        password=make_password(password),
+        first_name=first_name,
+        last_name=last_name,
+        tel_number=tel_number,
     )
 
     return Response({"message": "User created successfully"}, status=201)

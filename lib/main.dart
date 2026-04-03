@@ -14,7 +14,26 @@ void showAppMessage(BuildContext context, String message) {
   );
 }
 
-// ================= APP =================
+
+class AuthService {
+  Future<Map<String, dynamic>> register(String email, String password) async {
+    final response = await http.post(
+      Uri.parse('${baseUrl}register/'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email, 'password': password}),
+    );
+    return jsonDecode(response.body);
+  }
+
+  Future<Map<String, dynamic>> login(String email, String password) async {
+    final response = await http.post(
+      Uri.parse('${baseUrl}login/'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email, 'password': password}),
+    );
+    return jsonDecode(response.body);
+  }
+}
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -22,7 +41,181 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return const MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: HomePage(),
+      home: LoginPage(),
+    );
+  }
+}
+
+// ================= LOGIN =================
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  final email = TextEditingController();
+  final password = TextEditingController();
+  bool isLoading = false;
+
+  Future<void> login() async {
+    setState(() => isLoading = true);
+    try {
+      final res = await http.post(
+        Uri.parse("${baseUrl}login/"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"email": email.text, "password": password.text}),
+      );
+      if (!mounted) return;
+      final body = jsonDecode(res.body);
+      if (res.statusCode == 200) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const HomePage()),
+        );
+      } else {
+        showAppMessage(context, body['error'] ?? "Login failed");
+      }
+    } catch (e) {
+      if (!mounted) return;
+      showAppMessage(context, "Network error");
+    }
+    setState(() => isLoading = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Login")),
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            TextField(
+              controller: email,
+              decoration: const InputDecoration(labelText: "Email"),
+              keyboardType: TextInputType.emailAddress,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: password,
+              decoration: const InputDecoration(labelText: "Password"),
+              obscureText: true,
+            ),
+            const SizedBox(height: 24),
+            isLoading
+                ? const CircularProgressIndicator()
+                : ElevatedButton(
+                    onPressed: login,
+                    child: const Text("Login"),
+                  ),
+            TextButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const RegisterPage()),
+              ),
+              child: const Text("Don't have an account? Register"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ================= REGISTER =================
+class RegisterPage extends StatefulWidget {
+  const RegisterPage({super.key});
+
+  @override
+  State<RegisterPage> createState() => _RegisterPageState();
+}
+
+class _RegisterPageState extends State<RegisterPage> {
+  final email = TextEditingController();
+  final password = TextEditingController();
+  final firstName = TextEditingController();
+  final lastName = TextEditingController();
+  final telNumber = TextEditingController();
+  bool isLoading = false;
+
+  Future<void> register() async {
+    setState(() => isLoading = true);
+    try {
+      final res = await http.post(
+        Uri.parse("${baseUrl}register/"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "email": email.text,
+          "password": password.text,
+          "first_name": firstName.text,
+          "last_name": lastName.text,
+          "tel_number": telNumber.text,
+        }),
+      );
+      if (!mounted) return;
+      final body = jsonDecode(res.body);
+      if (res.statusCode == 201) {
+        showAppMessage(context, "Account created! Please login.");
+        Navigator.pop(context);
+      } else {
+        showAppMessage(context, body['error'] ?? "Registration failed");
+      }
+    } catch (e) {
+      if (!mounted) return;
+      showAppMessage(context, "Network error. Please try again.");
+    }
+    setState(() => isLoading = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Register")),
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            TextField(
+              controller: email,
+              decoration: const InputDecoration(labelText: "Email"),
+              keyboardType: TextInputType.emailAddress,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: password,
+              decoration: const InputDecoration(labelText: "Password"),
+              obscureText: true,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: firstName,
+              decoration: const InputDecoration(labelText: "First Name"),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: lastName,
+              decoration: const InputDecoration(labelText: "Last Name"),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: telNumber,
+              decoration: const InputDecoration(labelText: "Telephone Number"),
+              keyboardType: TextInputType.phone,
+            ),
+            const SizedBox(height: 24),
+            isLoading
+                ? const CircularProgressIndicator()
+                : ElevatedButton(
+                    onPressed: register,
+                    child: const Text("Register"),
+                  ),
+          ],
+        ),
+      ),
     );
   }
 }
